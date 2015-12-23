@@ -20,7 +20,8 @@
 //  along with telgo. If not, see <http://www.gnu.org/licenses/>.
 //
 
-package main
+// Package telgo contains a simple telnet control server
+package telgo
 
 import (
 	"bufio"
@@ -46,16 +47,35 @@ const (
 	IAC  = byte(255)
 )
 
-type TelgoCmd func(c *TelnetClient, args []string, cancel <-chan bool)
+type TelgoCmd func(c *TelnetClient, args []string, cancel <-chan bool) bool
+type TelgoCmdList map[string]TelgoCmd
 
 type TelnetClient struct {
 	conn     net.Conn
 	scanner  *bufio.Scanner
 	writer   *bufio.Writer
 	prompt   string
-	commands *map[string]TelgoCmd
+	commands *TelgoCmdList
 	userdata interface{}
 	iacout   chan []byte
+}
+
+func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userdata interface{}) (c *TelnetClient) {
+	tl.Println("telgo: new client from:", conn.RemoteAddr())
+	c = &TelnetClient{}
+	c.conn = conn
+	c.scanner = bufio.NewScanner(conn)
+	c.writer = bufio.NewWriter(conn)
+	c.prompt = prompt
+	c.commands = commands
+	c.userdata = userdata
+	// the telnet split function needs some closures to handle OOB telnet commands
+	c.iacout = make(chan []byte)
+	lastiiac := 0
+	c.scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		return scanLines(data, atEOF, c.iacout, &lastiiac)
+	})
+	return c
 }
 
 func (c *TelnetClient) WriteString(text string) {
@@ -80,9 +100,11 @@ func (c *TelnetClient) Say(format string, a ...interface{}) {
 }
 
 func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan bool) {
+	quit := false
+	defer func() { done <- quit }()
+
 	cmdslice := strings.Fields(cmdstr)
 	if len(cmdslice) == 0 || cmdslice[0] == "" {
-		done <- false
 		return
 	}
 	cmd := cmdslice[0]
@@ -90,11 +112,11 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan 
 
 	for cmdname, cmdfunc := range *c.commands {
 		if cmd == cmdname {
-			cmdfunc(c, args, cancel)
+			quit = cmdfunc(c, args, cancel)
+			return
 		}
 	}
 	c.Say("unknown command '%s'", cmd)
-	done <- false
 }
 
 func handleIac(iac []byte, iacout chan<- []byte) {
@@ -290,32 +312,14 @@ func (c *TelnetClient) handle() {
 	}
 }
 
-func newTelnetClient(conn net.Conn, prompt string, commands *map[string]TelgoCmd, userdata interface{}) (c *TelnetClient) {
-	tl.Println("telgo: new client from:", conn.RemoteAddr())
-	c = &TelnetClient{}
-	c.conn = conn
-	c.scanner = bufio.NewScanner(conn)
-	c.writer = bufio.NewWriter(conn)
-	c.prompt = prompt
-	c.commands = commands
-	c.userdata = userdata
-	// the telnet split function needs some closures to handle OOB telnet commands
-	c.iacout = make(chan []byte)
-	lastiiac := 0
-	c.scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		return scanLines(data, atEOF, c.iacout, &lastiiac)
-	})
-	return c
-}
-
 type TelnetServer struct {
 	addr     string
 	prompt   string
-	commands map[string]TelgoCmd
+	commands TelgoCmdList
 	userdata interface{}
 }
 
-func NewTelnetServer(addr, prompt string, commands map[string]TelgoCmd, userdata interface{}) (s *TelnetServer) {
+func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interface{}) (s *TelnetServer) {
 	s = &TelnetServer{}
 	s.addr = addr
 	s.prompt = prompt
@@ -324,25 +328,23 @@ func NewTelnetServer(addr, prompt string, commands map[string]TelgoCmd, userdata
 	return s
 }
 
-func (self *TelnetServer) Run() {
-	go func() {
-		tl.Println("telgo: listening on", self.addr)
+func (self *TelnetServer) Run() error {
+	tl.Println("telgo: listening on", self.addr)
 
-		server, err := net.Listen("tcp", self.addr)
+	server, err := net.Listen("tcp", self.addr)
+	if err != nil {
+		tl.Println("telgo: Listen() Error:", err)
+		return err
+	}
+
+	for {
+		conn, err := server.Accept()
 		if err != nil {
-			tl.Println("telgo: Listen() Error:", err)
-			return
+			tl.Println("telgo: Accept() Error:", err)
+			return err
 		}
 
-		for {
-			conn, err := server.Accept()
-			if err != nil {
-				tl.Println("telgo: Accept() Error:", err)
-				return
-			}
-
-			c := newTelnetClient(conn, self.prompt, &self.commands, self.userdata)
-			go c.handle()
-		}
-	}()
+		c := newTelnetClient(conn, self.prompt, &self.commands, self.userdata)
+		go c.handle()
+	}
 }
