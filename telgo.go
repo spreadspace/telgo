@@ -62,24 +62,24 @@ type TelgoCmd func(c *TelnetClient, args []string, cancel <-chan bool) bool
 type TelgoCmdList map[string]TelgoCmd
 
 type TelnetClient struct {
-	conn     net.Conn
+	Conn     net.Conn
 	scanner  *bufio.Scanner
 	writer   *bufio.Writer
 	prompt   string
 	commands *TelgoCmdList
-	userdata interface{}
+	UserData interface{}
 	iacout   chan []byte
 }
 
 func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userdata interface{}) (c *TelnetClient) {
 	tl.Println("telgo: new client from:", conn.RemoteAddr())
 	c = &TelnetClient{}
-	c.conn = conn
+	c.Conn = conn
 	c.scanner = bufio.NewScanner(conn)
 	c.writer = bufio.NewWriter(conn)
 	c.prompt = prompt
 	c.commands = commands
-	c.userdata = userdata
+	c.UserData = userdata
 	// the telnet split function needs some closures to handle OOB telnet commands
 	c.iacout = make(chan []byte)
 	lastiiac := 0
@@ -261,20 +261,20 @@ func (c *TelnetClient) recv(in chan<- string) {
 	for c.scanner.Scan() {
 		b := c.scanner.Bytes()
 		if len(b) > 0 && b[0] == EOT {
-			tl.Printf("telgo(%s): Ctrl-D received, closing", c.conn.RemoteAddr())
+			tl.Printf("telgo(%s): Ctrl-D received, closing", c.Conn.RemoteAddr())
 			return
 		}
 		in <- string(b)
 	}
 	if err := c.scanner.Err(); err != nil {
-		tl.Printf("telgo(%s): recv() error: %s", c.conn.RemoteAddr(), err)
+		tl.Printf("telgo(%s): recv() error: %s", c.Conn.RemoteAddr(), err)
 	} else {
-		tl.Printf("telgo(%s): Connection closed by foreign host", c.conn.RemoteAddr())
+		tl.Printf("telgo(%s): Connection closed by foreign host", c.Conn.RemoteAddr())
 	}
 }
 
 func (c *TelnetClient) handle() {
-	defer c.conn.Close()
+	defer c.Conn.Close()
 
 	in := make(chan string)
 	go c.recv(in)

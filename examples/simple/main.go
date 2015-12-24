@@ -29,13 +29,18 @@ import (
 )
 
 func simple_echo(c *telgo.TelnetClient, args []string, cancel <-chan bool) bool {
-	c.Say(strings.Join(args, " "))
+	c.Sayln(strings.Join(args, " "))
 	return false
+}
+
+func simple_quit(c *telgo.TelnetClient, args []string, cancel <-chan bool) bool {
+	return true
 }
 
 func main() {
 	cmdlist := make(telgo.TelgoCmdList)
 	cmdlist["echo"] = simple_echo
+	cmdlist["quit"] = simple_quit
 
 	s := telgo.NewTelnetServer(":7023", "simple> ", cmdlist, nil)
 	if err := s.Run(); err != nil {
