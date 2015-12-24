@@ -65,7 +65,7 @@ type TelgoCmdList map[string]TelgoCmd
 // the UserData which got supplied to NewTelnetServer.
 // The Cancel channel will get ready for reading when the user hits Ctrl-C or
 // the connection got terminated. This can be used for long running telgo commands
-// which can be aborted
+// to be aborted.
 type TelnetClient struct {
 	Conn     net.Conn
 	UserData interface{}
@@ -250,13 +250,6 @@ func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (ad
 	return 0, nil, nil // we have found none of the escape codes -> need more data
 }
 
-func (c *TelnetClient) cancel() {
-	select {
-	case c.Cancel <- true:
-	default: // process got canceled already
-	}
-}
-
 func (c *TelnetClient) recv(in chan<- string) {
 	defer close(in)
 
@@ -272,6 +265,13 @@ func (c *TelnetClient) recv(in chan<- string) {
 		tl.Printf("telgo(%s): recv() error: %s", c.Conn.RemoteAddr(), err)
 	} else {
 		tl.Printf("telgo(%s): Connection closed by foreign host", c.Conn.RemoteAddr())
+	}
+}
+
+func (c *TelnetClient) cancel() {
+	select {
+	case c.Cancel <- true:
+	default: // process got canceled already
 	}
 }
 
@@ -304,10 +304,10 @@ func (c *TelnetClient) handle() {
 	go c.send(quit_send)
 	defer func() { quit_send <- true }()
 
-	done := make(chan bool)
 	defer c.cancel() // make sure to cancel possible running job when closing connection
 
 	var cmd_backlog []string
+	done := make(chan bool)
 	busy := false
 	c.WriteString(c.prompt)
 	for {
