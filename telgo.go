@@ -23,7 +23,8 @@
 // Package telgo contains a simple telnet server which can be used as a
 // control/debug interface for applications.
 // The telgo telnet server does all the client handling and runs configurable
-// commands as go routines. It also supports handling of basic telnet commands.
+// commands as go routines. It also supports handling of basic inline telnet
+// commands used by variaus telnet clients to configure the client connection.
 // For now every negotiable telnet option will be discarded but the telnet
 // command IP (interrupt process) is understood and can be used to terminate
 // long running user commands.
@@ -53,21 +54,24 @@ const (
 	IAC  = byte(255)
 )
 
-// This the signature of telgo command functions. It receives a pointer to
-// the telgo client struct and slice of strings containing the arguments the
-// user has supplied. The cancel channel will get ready for reading when the
-// user hits Ctrl-C or the connection terminates.
+// This is the signature of telgo command functions. It receives a pointer to
+// the telgo client struct and a slice of strings containing the arguments the
+// user has supplied. The first argument is always the command name itself.
+// The cancel channel will get ready for reading when the user hits Ctrl-C or
+// the connection got terminated.
+// If this function returns true the client connection will be terminated.
 type TelgoCmd func(c *TelnetClient, args []string, cancel <-chan bool) bool
-
 type TelgoCmdList map[string]TelgoCmd
 
+// This struct is used to export the raw tcp connection to the client as well as
+// the UserData which got supplied to NewTelnetServer.
 type TelnetClient struct {
 	Conn     net.Conn
+	UserData interface{}
 	scanner  *bufio.Scanner
 	writer   *bufio.Writer
 	prompt   string
 	commands *TelgoCmdList
-	UserData interface{}
 	iacout   chan []byte
 }
 
@@ -119,6 +123,7 @@ func (c *TelnetClient) Sayln(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
 }
 
+// TODO: fix split function to respect "" and ''
 func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan bool) {
 	quit := false
 	defer func() { done <- quit }()
@@ -127,16 +132,14 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan 
 	if len(cmdslice) == 0 || cmdslice[0] == "" {
 		return
 	}
-	cmd := cmdslice[0]
-	args := cmdslice[1:]
 
-	for cmdname, cmdfunc := range *c.commands {
-		if cmd == cmdname {
-			quit = cmdfunc(c, args, cancel)
+	for cmd, cmdfunc := range *c.commands {
+		if cmdslice[0] == cmd {
+			quit = cmdfunc(c, cmdslice, cancel)
 			return
 		}
 	}
-	c.Sayln("unknown command '%s'", cmd)
+	c.Sayln("unknown command '%s'", cmdslice[0])
 }
 
 func handleIac(iac []byte, iacout chan<- []byte) {
@@ -339,8 +342,8 @@ type TelnetServer struct {
 	userdata interface{}
 }
 
-// This creates a new Telnet server. addr is the address to bind/listen to on and will be passed through
-// to net.Listen(). The prompt will be sent to the client whenver the telgo server is ready for new command
+// This creates a new telnet server. addr is the address to bind/listen to on and will be passed through
+// to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready for new command
 // TelgoCmdList contains a list of available commands and userdata will be made available to called telgo
 // commands through the client struct.
 func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interface{}) (s *TelnetServer) {
@@ -352,6 +355,7 @@ func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interf
 	return s
 }
 
+// This runs the telnet server and spawns go routines for every connecting client.
 func (self *TelnetServer) Run() error {
 	tl.Println("telgo: listening on", self.addr)
 

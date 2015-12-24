@@ -29,7 +29,7 @@ import (
 )
 
 func simple_echo(c *telgo.TelnetClient, args []string, cancel <-chan bool) bool {
-	c.Sayln(strings.Join(args, " "))
+	c.Sayln(strings.Join(args[1:], " "))
 	return false
 }
 
