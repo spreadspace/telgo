@@ -57,22 +57,25 @@ const (
 // This is the signature of telgo command functions. It receives a pointer to
 // the telgo client struct and a slice of strings containing the arguments the
 // user has supplied. The first argument is always the command name itself.
-// The cancel channel will get ready for reading when the user hits Ctrl-C or
-// the connection got terminated.
 // If this function returns true the client connection will be terminated.
-type TelgoCmd func(c *TelnetClient, args []string, cancel <-chan bool) bool
+type TelgoCmd func(c *TelnetClient, args []string) bool
 type TelgoCmdList map[string]TelgoCmd
 
 // This struct is used to export the raw tcp connection to the client as well as
 // the UserData which got supplied to NewTelnetServer.
+// The Cancel channel will get ready for reading when the user hits Ctrl-C or
+// the connection got terminated. This can be used for long running telgo commands
+// which can be aborted
 type TelnetClient struct {
 	Conn     net.Conn
 	UserData interface{}
+	Cancel   chan bool
 	scanner  *bufio.Scanner
 	writer   *bufio.Writer
 	prompt   string
 	commands *TelgoCmdList
 	iacout   chan []byte
+	stdout   chan []byte
 }
 
 func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userdata interface{}) (c *TelnetClient) {
@@ -84,6 +87,8 @@ func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userd
 	c.prompt = prompt
 	c.commands = commands
 	c.UserData = userdata
+	c.stdout = make(chan []byte)
+	c.Cancel = make(chan bool, 1)
 	// the telnet split function needs some closures to handle OOB telnet commands
 	c.iacout = make(chan []byte)
 	lastiiac := 0
@@ -97,20 +102,7 @@ func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userd
 // and Sayln is recommended. WriteString will take care of escaping IAC bytes
 // inside your string.
 func (c *TelnetClient) WriteString(text string) {
-	defer c.writer.Flush()
-
-	data := []byte(text)
-	for {
-		idx := bytes.IndexByte(data, IAC)
-		if idx >= 0 {
-			c.writer.Write(data[:idx+1])
-			c.writer.WriteByte(IAC)
-			data = data[idx+1:]
-		} else {
-			c.writer.Write(data)
-			return
-		}
-	}
+	c.stdout <- bytes.Replace([]byte(text), []byte{IAC}, []byte{IAC, IAC}, -1)
 }
 
 // This is a simple Printf like interface which sends responses to the client.
@@ -124,7 +116,7 @@ func (c *TelnetClient) Sayln(format string, a ...interface{}) {
 }
 
 // TODO: fix split function to respect "" and ''
-func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan bool) {
+func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
 	quit := false
 	defer func() { done <- quit }()
 
@@ -135,7 +127,7 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan 
 
 	for cmd, cmdfunc := range *c.commands {
 		if cmdslice[0] == cmd {
-			quit = cmdfunc(c, cmdslice, cancel)
+			quit = cmdfunc(c, cmdslice)
 			return
 		}
 	}
@@ -258,6 +250,13 @@ func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (ad
 	return 0, nil, nil // we have found none of the escape codes -> need more data
 }
 
+func (c *TelnetClient) cancel() {
+	select {
+	case c.Cancel <- true:
+	default: // process got canceled already
+	}
+}
+
 func (c *TelnetClient) recv(in chan<- string) {
 	defer close(in)
 
@@ -276,20 +275,37 @@ func (c *TelnetClient) recv(in chan<- string) {
 	}
 }
 
+func (c *TelnetClient) send(quit <-chan bool) {
+	for {
+		select {
+		case <-quit:
+			return
+		case iac := <-c.iacout:
+			if iac[1] == IP {
+				c.cancel()
+			} else {
+				c.writer.Write(iac)
+				c.writer.Flush()
+			}
+		case data := <-c.stdout:
+			c.writer.Write(data)
+			c.writer.Flush()
+		}
+	}
+}
+
 func (c *TelnetClient) handle() {
 	defer c.Conn.Close()
 
 	in := make(chan string)
 	go c.recv(in)
 
+	quit_send := make(chan bool)
+	go c.send(quit_send)
+	defer func() { quit_send <- true }()
+
 	done := make(chan bool)
-	cancel := make(chan bool, 1)
-	defer func() { // make sure to cancel possible running job when closing connection
-		select {
-		case cancel <- true:
-		default:
-		}
-	}()
+	defer c.cancel() // make sure to cancel possible running job when closing connection
 
 	var cmd_backlog []string
 	busy := false
@@ -302,7 +318,7 @@ func (c *TelnetClient) handle() {
 			}
 			if len(cmd) > 0 {
 				if !busy {
-					go c.handleCmd(cmd, done, cancel)
+					go c.handleCmd(cmd, done)
 					busy = true
 				} else {
 					cmd_backlog = append(cmd_backlog, cmd)
@@ -316,20 +332,10 @@ func (c *TelnetClient) handle() {
 			}
 			c.WriteString(c.prompt)
 			if len(cmd_backlog) > 0 {
-				go c.handleCmd(cmd_backlog[0], done, cancel)
+				go c.handleCmd(cmd_backlog[0], done)
 				cmd_backlog = cmd_backlog[1:]
 			} else {
 				busy = false
-			}
-		case iac := <-c.iacout:
-			if iac[1] == IP {
-				select {
-				case cancel <- true:
-				default: // process got canceled already
-				}
-			} else {
-				c.writer.Write(iac)
-				c.writer.Flush()
 			}
 		}
 	}

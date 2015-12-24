@@ -28,12 +28,12 @@ import (
 	"strings"
 )
 
-func simple_echo(c *telgo.TelnetClient, args []string, cancel <-chan bool) bool {
+func simple_echo(c *telgo.TelnetClient, args []string) bool {
 	c.Sayln(strings.Join(args[1:], " "))
 	return false
 }
 
-func simple_quit(c *telgo.TelnetClient, args []string, cancel <-chan bool) bool {
+func simple_quit(c *telgo.TelnetClient, args []string) bool {
 	return true
 }
 
