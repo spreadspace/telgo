@@ -310,37 +310,29 @@ func (c *TelnetClient) handle() {
 
 	defer c.cancel() // make sure to cancel possible running job when closing connection
 
-	var cmd_backlog []string
 	done := make(chan bool)
 	busy := false
 	c.WriteString(c.prompt)
 	for {
 		select {
 		case cmd, ok := <-in:
-			if !ok {
+			if !ok { // Ctrl-D or recv error (connection closed...)
 				return
 			}
-			if len(cmd) > 0 {
-				if !busy {
+			if !busy { // ignore everything except Ctrl-D while executing a command
+				if len(cmd) > 0 {
 					go c.handleCmd(cmd, done)
 					busy = true
 				} else {
-					cmd_backlog = append(cmd_backlog, cmd)
+					c.WriteString(c.prompt)
 				}
-			} else {
-				c.WriteString(c.prompt)
 			}
 		case exit := <-done:
 			if exit {
 				return
 			}
 			c.WriteString(c.prompt)
-			if len(cmd_backlog) > 0 {
-				go c.handleCmd(cmd_backlog[0], done)
-				cmd_backlog = cmd_backlog[1:]
-			} else {
-				busy = false
-			}
+			busy = false
 		}
 	}
 }
