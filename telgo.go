@@ -125,6 +125,10 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
 		return
 	}
 
+	select {
+	case <-c.Cancel: // consume potentially pending cancel request
+	default:
+	}
 	for cmd, cmdfunc := range *c.commands {
 		if cmdslice[0] == cmd {
 			quit = cmdfunc(c, cmdslice)

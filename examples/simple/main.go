@@ -25,11 +25,41 @@ package main
 import (
 	"fmt"
 	"github.com/spreadspace/telgo"
+	"strconv"
 	"strings"
+	"time"
 )
 
 func simple_echo(c *telgo.TelnetClient, args []string) bool {
 	c.Sayln(strings.Join(args[1:], " "))
+	return false
+}
+
+func simple_run(c *telgo.TelnetClient, args []string) bool {
+	if len(args) != 2 {
+		c.Sayln("usage: run <duration>")
+		return false
+	}
+	var duration uint
+	if d, err := strconv.ParseUint(args[1], 10, 32); err != nil {
+		c.Sayln("'%s' is not a vaild duration: must be a positive integer", args[1])
+		return false
+	} else {
+		duration = uint(d)
+	}
+	c.Sayln("this will run for %d seconds (type Ctrl-C to abort)", duration)
+	c.Say("running ...   0.0%%\r")
+	for i := uint(0); i < duration*10; i++ {
+		select {
+		case <-c.Cancel:
+			c.Sayln("\r\naborted.")
+			return false
+		default:
+		}
+		time.Sleep(100 * time.Millisecond)
+		c.Say("running ... %5.1f%%\r", (float64(i)/float64(duration*10))*100.0)
+	}
+	c.Sayln("running ... 100.0%% ... done.")
 	return false
 }
 
@@ -40,6 +70,7 @@ func simple_quit(c *telgo.TelnetClient, args []string) bool {
 func main() {
 	cmdlist := make(telgo.TelgoCmdList)
 	cmdlist["echo"] = simple_echo
+	cmdlist["run"] = simple_run
 	cmdlist["quit"] = simple_quit
 
 	s := telgo.NewTelnetServer(":7023", "simple> ", cmdlist, nil)
