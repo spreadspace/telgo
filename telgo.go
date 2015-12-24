@@ -20,7 +20,13 @@
 //  along with telgo. If not, see <http://www.gnu.org/licenses/>.
 //
 
-// Package telgo contains a simple telnet control server
+// Package telgo contains a simple telnet server which can be used as a
+// control/debug interface for applications.
+// The telgo telnet server does all the client handling and runs configurable
+// commands as go routines. It also supports handling of basic telnet commands.
+// For now every negotiable telnet option will be discarded but the telnet
+// command IP (interrupt process) is understood and can be used to terminate
+// long running user commands.
 package telgo
 
 import (
@@ -47,7 +53,12 @@ const (
 	IAC  = byte(255)
 )
 
+// This the signature of telgo command functions. It receives a pointer to
+// the telgo client struct and slice of strings containing the arguments the
+// user has supplied. The cancel channel will get ready for reading when the
+// user hits Ctrl-C or the connection terminates.
 type TelgoCmd func(c *TelnetClient, args []string, cancel <-chan bool) bool
+
 type TelgoCmdList map[string]TelgoCmd
 
 type TelnetClient struct {
@@ -78,6 +89,9 @@ func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userd
 	return c
 }
 
+// This writes a 'raw' string to the client. For the most part the usage of Say
+// and Sayln is recommended. WriteString will take care of escaping IAC bytes
+// inside your string.
 func (c *TelnetClient) WriteString(text string) {
 	defer c.writer.Flush()
 
@@ -95,8 +109,14 @@ func (c *TelnetClient) WriteString(text string) {
 	}
 }
 
+// This is a simple Printf like interface which sends responses to the client.
 func (c *TelnetClient) Say(format string, a ...interface{}) {
-	c.WriteString(fmt.Sprintf(format, a...) + "\n")
+	c.WriteString(fmt.Sprintf(format, a...))
+}
+
+// This is the same as Say but also adds a new-line at the end of the string.
+func (c *TelnetClient) Sayln(format string, a ...interface{}) {
+	c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
 }
 
 func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan bool) {
@@ -116,7 +136,7 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool, cancel <-chan 
 			return
 		}
 	}
-	c.Say("unknown command '%s'", cmd)
+	c.Sayln("unknown command '%s'", cmd)
 }
 
 func handleIac(iac []byte, iacout chan<- []byte) {
@@ -319,6 +339,10 @@ type TelnetServer struct {
 	userdata interface{}
 }
 
+// This creates a new Telnet server. addr is the address to bind/listen to on and will be passed through
+// to net.Listen(). The prompt will be sent to the client whenver the telgo server is ready for new command
+// TelgoCmdList contains a list of available commands and userdata will be made available to called telgo
+// commands through the client struct.
 func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interface{}) (s *TelnetServer) {
 	s = &TelnetServer{}
 	s.addr = addr
