@@ -353,8 +353,8 @@ type TelnetServer struct {
 }
 
 // This creates a new telnet server. addr is the address to bind/listen to on and will be passed through
-// to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready for new command
-// TelgoCmdList contains a list of available commands and userdata will be made available to called telgo
+// to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready for a new command.
+// TelgoCmdList is a list of available commands and userdata will be made available to called telgo
 // commands through the client struct.
 func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interface{}) (s *TelnetServer) {
 	s = &TelnetServer{}
