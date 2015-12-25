@@ -24,7 +24,7 @@
 // control/debug interface for applications.
 // The telgo telnet server does all the client handling and runs configurable
 // commands as go routines. It also supports handling of basic inline telnet
-// commands used by variaus telnet clients to configure the client connection.
+// commands used by variaus telnet clients to configure the connection.
 // For now every negotiable telnet option will be discarded but the telnet
 // command IP (interrupt process) is understood and can be used to terminate
 // long running user commands.
@@ -125,7 +125,7 @@ func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userd
 	c.UserData = userdata
 	c.stdout = make(chan []byte)
 	c.Cancel = make(chan bool, 1)
-	// the telnet split function needs some closures to handle OOB telnet commands
+	// the telnet split function needs some closures to handle inline telnet commands
 	c.iacout = make(chan []byte)
 	lastiiac := 0
 	c.scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -174,14 +174,17 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
 	c.Sayln("unknown command '%s'", cmdslice[0])
 }
 
+// parse the telnet command and send out out-of-band responses to them
 func handleIac(iac []byte, iacout chan<- []byte) {
 	switch iac[1] {
-	case WILL, WONT: // Don't accept any proposed options
-		iac[1] = DONT
+	case WILL, WONT:
+		iac[1] = DONT // deny the client to use any proposed options
 	case DO, DONT:
-		iac[1] = WONT
+		iac[1] = WONT // refuse the usage of any requested options
 	case IP:
 		// pass this through to client.handle which will cancel the process
+	case IAC:
+		return // just an escaped IAC, this will be dealt with by dropIAC
 	default:
 		tl.Printf("ignoring unimplemented telnet command: %s (%s)", telnet_commands[iac[1]].name, telnet_commands[iac[1]].description)
 		return
@@ -189,6 +192,7 @@ func handleIac(iac []byte, iacout chan<- []byte) {
 	iacout <- iac
 }
 
+// remove the carriage return at the end of the line
 func dropCR(data []byte) []byte {
 	if len(data) > 0 && data[len(data)-1] == '\r' {
 		return data[0 : len(data)-1]
@@ -196,6 +200,8 @@ func dropCR(data []byte) []byte {
 	return data
 }
 
+// remove all telnet commands which are still on the read buffer and were
+// handled already using out-of-band messages
 func dropIAC(data []byte) []byte {
 	var token []byte
 	iiac := 0
@@ -207,7 +213,10 @@ func dropIAC(data []byte) []byte {
 			if (len(data) - iiac) < 2 { // check if the data at least contains a command code
 				return token // something is fishy.. found an IAC but this is the last byte of the token...
 			}
-			l := telnet_commands[data[iiac+1]].length
+			l := 2 // if we don't know this command - assume it has a length of 2
+			if cmd, found := telnet_commands[data[iiac+1]]; found {
+				l = cmd.length
+			}
 			if (len(data) - iiac) < l { // check if the command is complete
 				return token // something is fishy.. found an IAC but the command is too short...
 			}
@@ -223,6 +232,8 @@ func dropIAC(data []byte) []byte {
 	return token
 }
 
+// This compares two indexes as returned by bytes.IndexByte treating -1 as the
+// highest possible index.
 func compareIdx(a, b int) int {
 	if a < 0 {
 		a = int(^uint(0) >> 1)
@@ -252,17 +263,20 @@ func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (ad
 
 		if inl >= 0 && compareIdx(inl, ieot) < 0 && compareIdx(inl, iiac) < 0 {
 			*lastiiac = 0
-			return inl + 1, dropCR(dropIAC(data[0:inl])), nil // found a complete line
+			return inl + 1, dropIAC(dropCR(data[0:inl])), nil // found a complete line and no EOT or IAC
 		}
 		if ieot >= 0 && compareIdx(ieot, iiac) < 0 {
 			*lastiiac = 0
-			return ieot + 1, data[ieot : ieot+1], nil // found a EOT (aka Ctrl-D was hit)
+			return ieot + 1, data[ieot : ieot+1], nil // found an EOT (aka Ctrl-D was hit) and no IAC
 		}
-		if iiac >= 0 {
+		if iiac >= 0 { // found an IAC
 			if (len(data) - iiac) < 2 {
 				return 0, nil, nil // data does not yet contain the telnet command code -> need more data
 			}
-			l := telnet_commands[data[iiac+1]].length
+			l := 2 // if we don't know this command - assume it has a length of 2
+			if cmd, found := telnet_commands[data[iiac+1]]; found {
+				l = cmd.length
+			}
 			if (len(data) - iiac) < l {
 				return 0, nil, nil // data does not yet contain the complete telnet command -> need more data
 			}
