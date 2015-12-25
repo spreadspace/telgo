@@ -203,7 +203,7 @@ func dropCR(data []byte) []byte {
 // remove all telnet commands which are still on the read buffer and were
 // handled already using out-of-band messages
 func dropIAC(data []byte) []byte {
-	var token []byte
+	token := []byte("")
 	iiac := 0
 	for {
 		niiac := bytes.IndexByte(data[iiac:], IAC)
