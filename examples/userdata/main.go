@@ -28,11 +28,7 @@ import (
 )
 
 func whoami(c *telgo.TelnetClient, args []string, hostname string) bool {
-	name := "anonymous"
-	if c.UserData != nil {
-		name = c.UserData.(string)
-	}
-	c.Sayln("%s @ (%s)", name, hostname)
+	c.Sayln("%s @ (%s)", c.UserData.(string), hostname)
 	return false
 }
 
@@ -58,7 +54,7 @@ func main() {
 	cmdlist["whoami"] = func(c *telgo.TelnetClient, args []string) bool { return whoami(c, args, global_userdata) }
 	cmdlist["setname"] = func(c *telgo.TelnetClient, args []string) bool { return setname(c, args, global_userdata) }
 
-	s := telgo.NewTelnetServer(":7023", "simple> ", cmdlist, nil)
+	s := telgo.NewTelnetServer(":7023", "simple> ", cmdlist, "anonymous")
 	if err := s.Run(); err != nil {
 		fmt.Printf("telnet server returned: %s", err)
 	}
