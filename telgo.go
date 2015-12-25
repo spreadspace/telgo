@@ -38,6 +38,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"unicode"
 )
 
 var (
@@ -151,12 +152,62 @@ func (c *TelnetClient) Sayln(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
 }
 
-// TODO: fix split function to respect "" and ''
+func spacesAndQuotes(r rune) bool {
+	return unicode.IsSpace(r) || r == rune('"')
+}
+
+func onlyQuotes(r rune) bool {
+	return r == rune('"')
+}
+
+// TODO: add suport for escaping " with \"
+//       detect if quotes are not surrounded by spaces
+func splitCmdArguments(cmdstr string) (cmds []string, err error) {
+	sepFunc := spacesAndQuotes
+	foundQuote := false
+	for {
+		i := strings.IndexFunc(cmdstr, sepFunc)
+		if i < 0 {
+			if foundQuote {
+				err = fmt.Errorf("closing \" is missing")
+			}
+			if len(cmdstr) > 0 {
+				cmds = append(cmds, cmdstr)
+			}
+			return
+		}
+		tl.Printf("found '%c' at %d", cmdstr[i], i)
+		switch cmdstr[i] {
+		case '\t', ' ':
+			if i > 0 {
+				cmds = append(cmds, cmdstr[0:i])
+			}
+			cmdstr = cmdstr[i+1:]
+		case '"':
+			if foundQuote {
+				cmds = append(cmds, cmdstr[0:i])
+				foundQuote = false
+				sepFunc = spacesAndQuotes
+			} else {
+				foundQuote = true
+				sepFunc = onlyQuotes
+			}
+			cmdstr = cmdstr[i+1:]
+		}
+	}
+}
+
 func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
 	quit := false
 	defer func() { done <- quit }()
 
-	cmdslice := strings.Fields(cmdstr)
+	cmdslice, err := splitCmdArguments(cmdstr)
+	if err != nil {
+		c.Sayln("can't parse command: %s", err)
+		return
+	}
+	tl.Printf("cmdslice = %+q", cmdslice)
+
 	if len(cmdslice) == 0 || cmdslice[0] == "" {
 		return
 	}
