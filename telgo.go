@@ -189,7 +189,6 @@ func backslashAndQuotes(r rune) bool {
 	return r == rune('\\') || r == rune('"')
 }
 
-// TODO: handle quotes which are not surrounded by spaces
 func splitCmdArguments(cmdstr string) (cmds []string, err error) {
 	sepFunc := spacesAndQuotes
 	foundQuote := false
@@ -206,7 +205,6 @@ func splitCmdArguments(cmdstr string) (cmds []string, err error) {
 			return
 		}
 		i += lastesc
-		tl.Printf("found %q at %d", cmdstr[i], i)
 		switch cmdstr[i] {
 		case '\t', ' ':
 			if i > 0 {
@@ -219,6 +217,13 @@ func splitCmdArguments(cmdstr string) (cmds []string, err error) {
 				cmds = append(cmds, stripEscapeChars(cmdstr[0:i]))
 				foundQuote = false
 				sepFunc = spacesAndQuotes
+				if len(cmdstr) == i+1 { // is this the end?
+					return
+				}
+				if !unicode.IsSpace(rune(cmdstr[i+1])) {
+					err = fmt.Errorf("there must be a space after a closing \"")
+					return
+				}
 			} else {
 				foundQuote = true
 				sepFunc = backslashAndQuotes
@@ -226,8 +231,9 @@ func splitCmdArguments(cmdstr string) (cmds []string, err error) {
 			lastesc = 0
 			cmdstr = cmdstr[i+1:]
 		case '\\':
-			if len(cmdstr[lastesc:]) < 2 {
+			if len(cmdstr[i:]) < 2 {
 				err = fmt.Errorf("sole \\ at the end and no closing \"")
+				return
 			}
 			lastesc = i + 2
 		}
@@ -238,13 +244,11 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
 	quit := false
 	defer func() { done <- quit }()
 
-	tl.Printf("cmdstr = %q", cmdstr)
 	cmdslice, err := splitCmdArguments(cmdstr)
 	if err != nil {
 		c.Sayln("can't parse command: %s", err)
 		return
 	}
-	tl.Printf("cmdslice = %q", cmdslice)
 
 	if len(cmdslice) == 0 || cmdslice[0] == "" {
 		return
