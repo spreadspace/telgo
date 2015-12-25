@@ -46,12 +46,48 @@ var (
 
 const (
 	EOT  = byte(4)
-	IP   = byte(244)
-	WILL = byte(251)
-	WONT = byte(252)
-	DO   = byte(253)
-	DONT = byte(254)
 	IAC  = byte(255)
+	DONT = byte(254)
+	DO   = byte(253)
+	WONT = byte(252)
+	WILL = byte(251)
+	SB   = byte(250)
+	GA   = byte(249)
+	EL   = byte(248)
+	EC   = byte(247)
+	AYT  = byte(246)
+	AO   = byte(245)
+	IP   = byte(244)
+	BREA = byte(243)
+	DM   = byte(242)
+	NOP  = byte(241)
+	SE   = byte(240)
+)
+
+type telnet_command struct {
+	length      int
+	name        string
+	description string
+}
+
+var (
+	telnet_commands = map[byte]telnet_command{
+		DONT: telnet_command{3, "DONT", "don't use option"},
+		DO:   telnet_command{3, "DO", "do use option"},
+		WONT: telnet_command{3, "WONT", "won't use option"},
+		WILL: telnet_command{3, "WILL", "will use option"},
+		SB:   telnet_command{2, "SB", "Begin of subnegotiation parameters"},
+		GA:   telnet_command{2, "GA", "go ahead signal"},
+		EL:   telnet_command{2, "EL", "erase line"},
+		EC:   telnet_command{2, "EC", "erase character"},
+		AYT:  telnet_command{2, "AYT", "are you there"},
+		AO:   telnet_command{2, "AO", "abort output"},
+		IP:   telnet_command{2, "IP", "interrupt process"},
+		BREA: telnet_command{2, "BREA", "break"},
+		DM:   telnet_command{2, "DM", "data mark"},
+		NOP:  telnet_command{2, "NOP", "no operation"},
+		SE:   telnet_command{2, "SE", "End of subnegotiation parameters"},
+	}
 )
 
 // This is the signature of telgo command functions. It receives a pointer to
@@ -147,7 +183,7 @@ func handleIac(iac []byte, iacout chan<- []byte) {
 	case IP:
 		// pass this through to client.handle which will cancel the process
 	default:
-		tl.Printf("ignoring unimplemented telnet command: %X", iac[1])
+		tl.Printf("ignoring unimplemented telnet command: %s (%s)", telnet_commands[iac[1]].name, telnet_commands[iac[1]].description)
 		return
 	}
 	iacout <- iac
@@ -168,21 +204,17 @@ func dropIAC(data []byte) []byte {
 		if niiac >= 0 {
 			token = append(token, data[iiac:iiac+niiac]...)
 			iiac += niiac
-			if (len(data) - iiac) < 2 {
-				return token
+			if (len(data) - iiac) < 2 { // check if the data at least contains a command code
+				return token // something is fishy.. found an IAC but this is the last byte of the token...
 			}
-			switch data[iiac+1] {
-			case DONT, DO, WONT, WILL:
-				if (len(data) - iiac) < 3 {
-					return token
-				}
-				iiac += 3
-			case IAC:
+			l := telnet_commands[data[iiac+1]].length
+			if (len(data) - iiac) < l { // check if the command is complete
+				return token // something is fishy.. found an IAC but the command is too short...
+			}
+			if data[iiac+1] == IAC { // escaped IAC found
 				token = append(token, IAC)
-				fallthrough
-			default:
-				iiac += 2
 			}
+			iiac += l
 		} else {
 			token = append(token, data[iiac:]...)
 			break
@@ -224,22 +256,15 @@ func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (ad
 		}
 		if ieot >= 0 && compareIdx(ieot, iiac) < 0 {
 			*lastiiac = 0
-			return ieot + 1, data[ieot : ieot+1], nil // found a EOT (aka Ctrl-D)
+			return ieot + 1, data[ieot : ieot+1], nil // found a EOT (aka Ctrl-D was hit)
 		}
 		if iiac >= 0 {
-			l := 2
 			if (len(data) - iiac) < 2 {
 				return 0, nil, nil // data does not yet contain the telnet command code -> need more data
 			}
-			switch data[iiac+1] {
-			case DONT, DO, WONT, WILL:
-				if (len(data) - iiac) < 3 {
-					return 0, nil, nil // this is a 3-byte command and data does not yet contain the option code -> need more data
-				}
-				l = 3
-			case IAC:
-				iiac += 2
-				continue
+			l := telnet_commands[data[iiac+1]].length
+			if (len(data) - iiac) < l {
+				return 0, nil, nil // data does not yet contain the complete telnet command -> need more data
 			}
 			handleIac(data[iiac:iiac+l], iacout)
 			iiac += l
