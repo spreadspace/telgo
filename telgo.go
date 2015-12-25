@@ -37,6 +37,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -152,21 +153,49 @@ func (c *TelnetClient) Sayln(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
 }
 
+var (
+	escapeRe = regexp.MustCompile("\\\\.")
+)
+
+func replEscapeChars(m string) (r string) {
+	switch m {
+	case "\\a":
+		return "\a"
+	case "\\b":
+		return "\b"
+	case "\\t":
+		return "\t"
+	case "\\n":
+		return "\n"
+	case "\\v":
+		return "\v"
+	case "\\f":
+		return "\f"
+	case "\\r":
+		return "\r"
+	}
+	return string(m[1])
+}
+
+func stripEscapeChars(s string) string {
+	return escapeRe.ReplaceAllStringFunc(s, replEscapeChars)
+}
+
 func spacesAndQuotes(r rune) bool {
 	return unicode.IsSpace(r) || r == rune('"')
 }
 
-func onlyQuotes(r rune) bool {
-	return r == rune('"')
+func backslashAndQuotes(r rune) bool {
+	return r == rune('\\') || r == rune('"')
 }
 
-// TODO: add suport for escaping " with \"
-//       detect if quotes are not surrounded by spaces
+// TODO: handle quotes which are not surrounded by spaces
 func splitCmdArguments(cmdstr string) (cmds []string, err error) {
 	sepFunc := spacesAndQuotes
 	foundQuote := false
+	lastesc := 0
 	for {
-		i := strings.IndexFunc(cmdstr, sepFunc)
+		i := strings.IndexFunc(cmdstr[lastesc:], sepFunc)
 		if i < 0 {
 			if foundQuote {
 				err = fmt.Errorf("closing \" is missing")
@@ -176,23 +205,31 @@ func splitCmdArguments(cmdstr string) (cmds []string, err error) {
 			}
 			return
 		}
-		tl.Printf("found '%c' at %d", cmdstr[i], i)
+		i += lastesc
+		tl.Printf("found %q at %d", cmdstr[i], i)
 		switch cmdstr[i] {
 		case '\t', ' ':
 			if i > 0 {
 				cmds = append(cmds, cmdstr[0:i])
 			}
+			lastesc = 0
 			cmdstr = cmdstr[i+1:]
 		case '"':
 			if foundQuote {
-				cmds = append(cmds, cmdstr[0:i])
+				cmds = append(cmds, stripEscapeChars(cmdstr[0:i]))
 				foundQuote = false
 				sepFunc = spacesAndQuotes
 			} else {
 				foundQuote = true
-				sepFunc = onlyQuotes
+				sepFunc = backslashAndQuotes
 			}
+			lastesc = 0
 			cmdstr = cmdstr[i+1:]
+		case '\\':
+			if len(cmdstr[lastesc:]) < 2 {
+				err = fmt.Errorf("sole \\ at the end and no closing \"")
+			}
+			lastesc = i + 2
 		}
 	}
 }
@@ -201,12 +238,13 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
 	quit := false
 	defer func() { done <- quit }()
 
+	tl.Printf("cmdstr = %q", cmdstr)
 	cmdslice, err := splitCmdArguments(cmdstr)
 	if err != nil {
 		c.Sayln("can't parse command: %s", err)
 		return
 	}
-	tl.Printf("cmdslice = %+q", cmdslice)
+	tl.Printf("cmdslice = %q", cmdslice)
 
 	if len(cmdslice) == 0 || cmdslice[0] == "" {
 		return
