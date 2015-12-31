@@ -28,12 +28,15 @@
 // For now every negotiable telnet option will be discarded but the telnet
 // command IP (interrupt process) is understood and can be used to terminate
 // long running user commands.
+// If the environment contains the variable TELGO_DEBUG logging will be enabled.
+// By default telgo doesn't log anything.
 package telgo
 
 import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -43,8 +46,14 @@ import (
 )
 
 var (
-	tl = log.New(os.Stderr, "[telnet]\t", log.LstdFlags)
+	tl = log.New(ioutil.Discard, "[telgo]\t", log.LstdFlags)
 )
+
+func init() {
+	if _, exists := os.LookupEnv("TELGO_DEBUG"); exists {
+		tl = log.New(os.Stderr, "[telgo]\t", log.LstdFlags)
+	}
+}
 
 const (
 	EOT  = byte(4)
@@ -117,7 +126,7 @@ type TelnetClient struct {
 }
 
 func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userdata interface{}) (c *TelnetClient) {
-	tl.Println("telgo: new client from:", conn.RemoteAddr())
+	tl.Println("new client from:", conn.RemoteAddr())
 	c = &TelnetClient{}
 	c.Conn = conn
 	c.scanner = bufio.NewScanner(conn)
@@ -392,15 +401,15 @@ func (c *TelnetClient) recv(in chan<- string) {
 	for c.scanner.Scan() {
 		b := c.scanner.Bytes()
 		if len(b) > 0 && b[0] == EOT {
-			tl.Printf("telgo(%s): Ctrl-D received, closing", c.Conn.RemoteAddr())
+			tl.Printf("client(%s): Ctrl-D received, closing", c.Conn.RemoteAddr())
 			return
 		}
 		in <- string(b)
 	}
 	if err := c.scanner.Err(); err != nil {
-		tl.Printf("telgo(%s): recv() error: %s", c.Conn.RemoteAddr(), err)
+		tl.Printf("client(%s): recv() error: %s", c.Conn.RemoteAddr(), err)
 	} else {
-		tl.Printf("telgo(%s): Connection closed by foreign host", c.Conn.RemoteAddr())
+		tl.Printf("client(%s): Connection closed by foreign host", c.Conn.RemoteAddr())
 	}
 }
 
@@ -491,18 +500,18 @@ func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interf
 
 // This runs the telnet server and spawns go routines for every connecting client.
 func (self *TelnetServer) Run() error {
-	tl.Println("telgo: listening on", self.addr)
+	tl.Println("listening on", self.addr)
 
 	server, err := net.Listen("tcp", self.addr)
 	if err != nil {
-		tl.Println("telgo: Listen() Error:", err)
+		tl.Println("Listen() Error:", err)
 		return err
 	}
 
 	for {
 		conn, err := server.Accept()
 		if err != nil {
-			tl.Println("telgo: Accept() Error:", err)
+			tl.Println("Accept() Error:", err)
 			return err
 		}
 
