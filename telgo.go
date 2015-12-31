@@ -66,29 +66,29 @@ const (
 	SE   = byte(240)
 )
 
-type telnet_command struct {
+type telnetCmd struct {
 	length      int
 	name        string
 	description string
 }
 
 var (
-	telnet_commands = map[byte]telnet_command{
-		DONT: telnet_command{3, "DONT", "don't use option"},
-		DO:   telnet_command{3, "DO", "do use option"},
-		WONT: telnet_command{3, "WONT", "won't use option"},
-		WILL: telnet_command{3, "WILL", "will use option"},
-		SB:   telnet_command{2, "SB", "Begin of subnegotiation parameters"},
-		GA:   telnet_command{2, "GA", "go ahead signal"},
-		EL:   telnet_command{2, "EL", "erase line"},
-		EC:   telnet_command{2, "EC", "erase character"},
-		AYT:  telnet_command{2, "AYT", "are you there"},
-		AO:   telnet_command{2, "AO", "abort output"},
-		IP:   telnet_command{2, "IP", "interrupt process"},
-		BREA: telnet_command{2, "BREA", "break"},
-		DM:   telnet_command{2, "DM", "data mark"},
-		NOP:  telnet_command{2, "NOP", "no operation"},
-		SE:   telnet_command{2, "SE", "End of subnegotiation parameters"},
+	telnetCmds = map[byte]telnetCmd{
+		DONT: telnetCmd{3, "DONT", "don't use option"},
+		DO:   telnetCmd{3, "DO", "do use option"},
+		WONT: telnetCmd{3, "WONT", "won't use option"},
+		WILL: telnetCmd{3, "WILL", "will use option"},
+		SB:   telnetCmd{2, "SB", "Begin of subnegotiation parameters"},
+		GA:   telnetCmd{2, "GA", "go ahead signal"},
+		EL:   telnetCmd{2, "EL", "erase line"},
+		EC:   telnetCmd{2, "EC", "erase character"},
+		AYT:  telnetCmd{2, "AYT", "are you there"},
+		AO:   telnetCmd{2, "AO", "abort output"},
+		IP:   telnetCmd{2, "IP", "interrupt process"},
+		BREA: telnetCmd{2, "BREA", "break"},
+		DM:   telnetCmd{2, "DM", "data mark"},
+		NOP:  telnetCmd{2, "NOP", "no operation"},
+		SE:   telnetCmd{2, "SE", "End of subnegotiation parameters"},
 	}
 )
 
@@ -279,7 +279,7 @@ func handleIac(iac []byte, iacout chan<- []byte) {
 	case IAC:
 		return // just an escaped IAC, this will be dealt with by dropIAC
 	default:
-		tl.Printf("ignoring unimplemented telnet command: %s (%s)", telnet_commands[iac[1]].name, telnet_commands[iac[1]].description)
+		tl.Printf("ignoring unimplemented telnet command: %s (%s)", telnetCmds[iac[1]].name, telnetCmds[iac[1]].description)
 		return
 	}
 	iacout <- iac
@@ -307,7 +307,7 @@ func dropIAC(data []byte) []byte {
 				return token // something is fishy.. found an IAC but this is the last byte of the token...
 			}
 			l := 2 // if we don't know this command - assume it has a length of 2
-			if cmd, found := telnet_commands[data[iiac+1]]; found {
+			if cmd, found := telnetCmds[data[iiac+1]]; found {
 				l = cmd.length
 			}
 			if (len(data) - iiac) < l { // check if the command is complete
@@ -367,7 +367,7 @@ func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (ad
 				return 0, nil, nil // data does not yet contain the telnet command code -> need more data
 			}
 			l := 2 // if we don't know this command - assume it has a length of 2
-			if cmd, found := telnet_commands[data[iiac+1]]; found {
+			if cmd, found := telnetCmds[data[iiac+1]]; found {
 				l = cmd.length
 			}
 			if (len(data) - iiac) < l {
@@ -436,9 +436,9 @@ func (c *TelnetClient) handle() {
 	in := make(chan string)
 	go c.recv(in)
 
-	quit_send := make(chan bool)
-	go c.send(quit_send)
-	defer func() { quit_send <- true }()
+	quitSend := make(chan bool)
+	go c.send(quitSend)
+	defer func() { quitSend <- true }()
 
 	defer c.cancel() // make sure to cancel possible running job when closing connection
 

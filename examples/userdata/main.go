@@ -42,7 +42,7 @@ func setname(c *telgo.TelnetClient, args []string, hostname string) bool {
 }
 
 func main() {
-	global_userdata := "test"
+	globalUserdata := "test"
 
 	// This is one example of how to use the UserData field of the TelnetClient
 	// struct.
@@ -51,10 +51,10 @@ func main() {
 	// not shared between all connected clients without the need to have an extra
 	// struct containing pointers to global and client specific data structures.
 	cmdlist := make(telgo.TelgoCmdList)
-	cmdlist["whoami"] = func(c *telgo.TelnetClient, args []string) bool { return whoami(c, args, global_userdata) }
-	cmdlist["setname"] = func(c *telgo.TelnetClient, args []string) bool { return setname(c, args, global_userdata) }
+	cmdlist["whoami"] = func(c *telgo.TelnetClient, args []string) bool { return whoami(c, args, globalUserdata) }
+	cmdlist["setname"] = func(c *telgo.TelnetClient, args []string) bool { return setname(c, args, globalUserdata) }
 
-	s := telgo.NewTelnetServer(":7023", "simple> ", cmdlist, "anonymous")
+	s := telgo.NewTelnetServer(":7023", "userdata> ", cmdlist, "anonymous")
 	if err := s.Run(); err != nil {
 		fmt.Printf("telnet server returned: %s", err)
 	}
