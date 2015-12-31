@@ -20,5 +20,4 @@ This is currently on development. Any api calls are subject to change!
 
 ## Licence
 
-    © 2015 Christian Pointner <equinox@spreadspace.org>    GPL-3+
-
+    © 2015 Christian Pointner <equinox@spreadspace.org>    3-clause BSD
