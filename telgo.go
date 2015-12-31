@@ -114,14 +114,14 @@ var (
 // If this function returns true the client connection will be terminated.
 type Cmd func(c *TelnetClient, args []string) bool
 
-// CmdList is a list of Telgo Commands using the command name as the key.
+// CmdList is a list of telgo commands using the command name as the key.
 type CmdList map[string]Cmd
 
 // TelnetClient is used to export the raw tcp connection to the client as well as
-// the UserData to Telgo command functions.
+// the UserData to telgo command functions.
 // The Cancel channel will get ready for reading when the user hits Ctrl-C or
-// the connection got terminated. This can be used for long running telgo commands
-// to be aborted.
+// the connection got terminated. This can be used to abort long running telgo
+// commands.
 type TelnetClient struct {
 	Conn     net.Conn
 	UserData interface{}
@@ -161,7 +161,7 @@ func (c *TelnetClient) WriteString(text string) {
 	c.stdout <- bytes.Replace([]byte(text), []byte{bIAC}, []byte{bIAC, bIAC}, -1)
 }
 
-// Say is a simple Printf like interface which sends responses to the client.
+// Say is a simple Printf-like interface which sends responses to the client.
 func (c *TelnetClient) Say(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...))
 }
@@ -496,10 +496,10 @@ type TelnetServer struct {
 	userdata interface{}
 }
 
-// NewTelnetServer creates a new telnet server. addr is the address to bind/listen to on and will be passed
-// through to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready for a
-// new command.
-// commands is a list of commands to be used and userdata will be made available to called telgo commands
+// NewTelnetServer creates a new telnet server struct. addr is the address to bind/listen to on and will be
+// passed through to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready
+// for a new command.
+// commands is a list of telgo commands to be used and userdata will be made available to called telgo commands
 // through the client struct.
 func NewTelnetServer(addr, prompt string, commands CmdList, userdata interface{}) (s *TelnetServer) {
 	s = &TelnetServer{}
