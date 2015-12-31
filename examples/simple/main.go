@@ -37,12 +37,12 @@ import (
 	"time"
 )
 
-func echo(c *telgo.TelnetClient, args []string) bool {
+func echo(c *telgo.Client, args []string) bool {
 	c.Sayln(strings.Join(args[1:], " "))
 	return false
 }
 
-func run(c *telgo.TelnetClient, args []string) bool {
+func run(c *telgo.Client, args []string) bool {
 	if len(args) != 2 {
 		c.Sayln("usage: run <duration>")
 		return false
@@ -70,7 +70,7 @@ func run(c *telgo.TelnetClient, args []string) bool {
 	return false
 }
 
-func quit(c *telgo.TelnetClient, args []string) bool {
+func quit(c *telgo.Client, args []string) bool {
 	return true
 }
 
@@ -80,7 +80,7 @@ func main() {
 	cmdlist["run"] = run
 	cmdlist["quit"] = quit
 
-	s := telgo.NewTelnetServer(":7023", "simple> ", cmdlist, nil)
+	s := telgo.NewServer(":7023", "simple> ", cmdlist, nil)
 	if err := s.Run(); err != nil {
 		fmt.Printf("telnet server returned: %s", err)
 	}

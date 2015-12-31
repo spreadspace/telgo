@@ -112,17 +112,17 @@ var (
 // the telgo client struct and a slice of strings containing the arguments the
 // user has supplied. The first argument is always the command name itself.
 // If this function returns true the client connection will be terminated.
-type Cmd func(c *TelnetClient, args []string) bool
+type Cmd func(c *Client, args []string) bool
 
 // CmdList is a list of telgo commands using the command name as the key.
 type CmdList map[string]Cmd
 
-// TelnetClient is used to export the raw tcp connection to the client as well as
-// the UserData to telgo command functions.
+// Client is used to export the raw tcp connection to the client as well as the
+// UserData to telgo command functions.
 // The Cancel channel will get ready for reading when the user hits Ctrl-C or
 // the connection got terminated. This can be used to abort long running telgo
 // commands.
-type TelnetClient struct {
+type Client struct {
 	Conn     net.Conn
 	UserData interface{}
 	Cancel   chan bool
@@ -134,9 +134,9 @@ type TelnetClient struct {
 	stdout   chan []byte
 }
 
-func newTelnetClient(conn net.Conn, prompt string, commands *CmdList, userdata interface{}) (c *TelnetClient) {
+func newClient(conn net.Conn, prompt string, commands *CmdList, userdata interface{}) (c *Client) {
 	tl.Println("new client from:", conn.RemoteAddr())
-	c = &TelnetClient{}
+	c = &Client{}
 	c.Conn = conn
 	c.scanner = bufio.NewScanner(conn)
 	c.writer = bufio.NewWriter(conn)
@@ -157,17 +157,17 @@ func newTelnetClient(conn net.Conn, prompt string, commands *CmdList, userdata i
 // WriteString writes a 'raw' string to the client. For most purposes the usage of
 // Say and Sayln is recommended. WriteString will take care of escaping IAC bytes
 // inside your string.
-func (c *TelnetClient) WriteString(text string) {
+func (c *Client) WriteString(text string) {
 	c.stdout <- bytes.Replace([]byte(text), []byte{bIAC}, []byte{bIAC, bIAC}, -1)
 }
 
 // Say is a simple Printf-like interface which sends responses to the client.
-func (c *TelnetClient) Say(format string, a ...interface{}) {
+func (c *Client) Say(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...))
 }
 
 // Sayln is the same as Say but also adds a new-line at the end of the string.
-func (c *TelnetClient) Sayln(format string, a ...interface{}) {
+func (c *Client) Sayln(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
 }
 
@@ -258,7 +258,7 @@ func splitCmdArguments(cmdstr string) (cmds []string, err error) {
 	}
 }
 
-func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
+func (c *Client) handleCmd(cmdstr string, done chan<- bool) {
 	quit := false
 	defer func() { done <- quit }()
 
@@ -404,7 +404,7 @@ func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (ad
 	return 0, nil, nil // we have found none of the escape codes -> need more data
 }
 
-func (c *TelnetClient) recv(in chan<- string) {
+func (c *Client) recv(in chan<- string) {
 	defer close(in)
 
 	for c.scanner.Scan() {
@@ -422,14 +422,14 @@ func (c *TelnetClient) recv(in chan<- string) {
 	}
 }
 
-func (c *TelnetClient) cancel() {
+func (c *Client) cancel() {
 	select {
 	case c.Cancel <- true:
 	default: // process got canceled already
 	}
 }
 
-func (c *TelnetClient) send(quit <-chan bool) {
+func (c *Client) send(quit <-chan bool) {
 	for {
 		select {
 		case <-quit:
@@ -448,7 +448,7 @@ func (c *TelnetClient) send(quit <-chan bool) {
 	}
 }
 
-func (c *TelnetClient) handle() {
+func (c *Client) handle() {
 	defer c.Conn.Close()
 
 	in := make(chan string)
@@ -487,22 +487,22 @@ func (c *TelnetClient) handle() {
 	}
 }
 
-// TelnetServer contains all values needed to run the server. Use NewTelnetServer to create
+// Server contains all values needed to run the server. Use NewServer to create
 // and Run to actually run the server.
-type TelnetServer struct {
+type Server struct {
 	addr     string
 	prompt   string
 	commands CmdList
 	userdata interface{}
 }
 
-// NewTelnetServer creates a new telnet server struct. addr is the address to bind/listen to on and will be
+// NewServer creates a new telnet server struct. addr is the address to bind/listen to on and will be
 // passed through to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready
 // for a new command.
 // commands is a list of telgo commands to be used and userdata will be made available to called telgo commands
 // through the client struct.
-func NewTelnetServer(addr, prompt string, commands CmdList, userdata interface{}) (s *TelnetServer) {
-	s = &TelnetServer{}
+func NewServer(addr, prompt string, commands CmdList, userdata interface{}) (s *Server) {
+	s = &Server{}
 	s.addr = addr
 	s.prompt = prompt
 	s.commands = commands
@@ -511,7 +511,7 @@ func NewTelnetServer(addr, prompt string, commands CmdList, userdata interface{}
 }
 
 // Run opens the server socket and runs the telnet server which spawns go routines for every connecting client.
-func (s *TelnetServer) Run() error {
+func (s *Server) Run() error {
 	tl.Println("listening on", s.addr)
 
 	server, err := net.Listen("tcp", s.addr)
@@ -527,7 +527,7 @@ func (s *TelnetServer) Run() error {
 			return err
 		}
 
-		c := newTelnetClient(conn, s.prompt, &s.commands, s.userdata)
+		c := newClient(conn, s.prompt, &s.commands, s.userdata)
 		go c.handle()
 	}
 }

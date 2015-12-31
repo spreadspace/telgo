@@ -34,12 +34,12 @@ import (
 	"github.com/spreadspace/telgo"
 )
 
-func whoami(c *telgo.TelnetClient, args []string, hostname string) bool {
+func whoami(c *telgo.Client, args []string, hostname string) bool {
 	c.Sayln("%s @ (%s)", c.UserData.(string), hostname)
 	return false
 }
 
-func setname(c *telgo.TelnetClient, args []string, hostname string) bool {
+func setname(c *telgo.Client, args []string, hostname string) bool {
 	if len(args) != 2 {
 		c.Sayln("invalid number of arguments!")
 		return false
@@ -51,17 +51,17 @@ func setname(c *telgo.TelnetClient, args []string, hostname string) bool {
 func main() {
 	globalUserdata := "test"
 
-	// This is one example of how to use the UserData field of the TelnetClient
+	// This is one example of how to use the UserData field of the Client
 	// struct.
 	// Export data for all clients as closures to the telgo command functions
 	// clients can then use the UserData field for client specific data which is
 	// not shared between all connected clients without the need to have an extra
 	// struct containing pointers to global and client specific data structures.
 	cmdlist := make(telgo.CmdList)
-	cmdlist["whoami"] = func(c *telgo.TelnetClient, args []string) bool { return whoami(c, args, globalUserdata) }
-	cmdlist["setname"] = func(c *telgo.TelnetClient, args []string) bool { return setname(c, args, globalUserdata) }
+	cmdlist["whoami"] = func(c *telgo.Client, args []string) bool { return whoami(c, args, globalUserdata) }
+	cmdlist["setname"] = func(c *telgo.Client, args []string) bool { return setname(c, args, globalUserdata) }
 
-	s := telgo.NewTelnetServer(":7023", "userdata> ", cmdlist, "anonymous")
+	s := telgo.NewServer(":7023", "userdata> ", cmdlist, "anonymous")
 	if err := s.Run(); err != nil {
 		fmt.Printf("telnet server returned: %s", err)
 	}
