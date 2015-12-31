@@ -57,7 +57,7 @@ func main() {
 	// clients can then use the UserData field for client specific data which is
 	// not shared between all connected clients without the need to have an extra
 	// struct containing pointers to global and client specific data structures.
-	cmdlist := make(telgo.TelgoCmdList)
+	cmdlist := make(telgo.CmdList)
 	cmdlist["whoami"] = func(c *telgo.TelnetClient, args []string) bool { return whoami(c, args, globalUserdata) }
 	cmdlist["setname"] = func(c *telgo.TelnetClient, args []string) bool { return setname(c, args, globalUserdata) }
 

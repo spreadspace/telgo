@@ -63,23 +63,23 @@ func init() {
 }
 
 const (
-	EOT  = byte(4)
-	IAC  = byte(255)
-	DONT = byte(254)
-	DO   = byte(253)
-	WONT = byte(252)
-	WILL = byte(251)
-	SB   = byte(250)
-	GA   = byte(249)
-	EL   = byte(248)
-	EC   = byte(247)
-	AYT  = byte(246)
-	AO   = byte(245)
-	IP   = byte(244)
-	BREA = byte(243)
-	DM   = byte(242)
-	NOP  = byte(241)
-	SE   = byte(240)
+	bEOT  = byte(4)
+	bIAC  = byte(255)
+	bDONT = byte(254)
+	bDO   = byte(253)
+	bWONT = byte(252)
+	bWILL = byte(251)
+	bSB   = byte(250)
+	bGA   = byte(249)
+	bEL   = byte(248)
+	bEC   = byte(247)
+	bAYT  = byte(246)
+	bAO   = byte(245)
+	bIP   = byte(244)
+	bBREA = byte(243)
+	bDM   = byte(242)
+	bNOP  = byte(241)
+	bSE   = byte(240)
 )
 
 type telnetCmd struct {
@@ -90,33 +90,35 @@ type telnetCmd struct {
 
 var (
 	telnetCmds = map[byte]telnetCmd{
-		DONT: telnetCmd{3, "DONT", "don't use option"},
-		DO:   telnetCmd{3, "DO", "do use option"},
-		WONT: telnetCmd{3, "WONT", "won't use option"},
-		WILL: telnetCmd{3, "WILL", "will use option"},
-		SB:   telnetCmd{2, "SB", "Begin of subnegotiation parameters"},
-		GA:   telnetCmd{2, "GA", "go ahead signal"},
-		EL:   telnetCmd{2, "EL", "erase line"},
-		EC:   telnetCmd{2, "EC", "erase character"},
-		AYT:  telnetCmd{2, "AYT", "are you there"},
-		AO:   telnetCmd{2, "AO", "abort output"},
-		IP:   telnetCmd{2, "IP", "interrupt process"},
-		BREA: telnetCmd{2, "BREA", "break"},
-		DM:   telnetCmd{2, "DM", "data mark"},
-		NOP:  telnetCmd{2, "NOP", "no operation"},
-		SE:   telnetCmd{2, "SE", "End of subnegotiation parameters"},
+		bDONT: telnetCmd{3, "DONT", "don't use option"},
+		bDO:   telnetCmd{3, "DO", "do use option"},
+		bWONT: telnetCmd{3, "WONT", "won't use option"},
+		bWILL: telnetCmd{3, "WILL", "will use option"},
+		bSB:   telnetCmd{2, "SB", "Begin of subnegotiation parameters"},
+		bGA:   telnetCmd{2, "GA", "go ahead signal"},
+		bEL:   telnetCmd{2, "EL", "erase line"},
+		bEC:   telnetCmd{2, "EC", "erase character"},
+		bAYT:  telnetCmd{2, "AYT", "are you there"},
+		bAO:   telnetCmd{2, "AO", "abort output"},
+		bIP:   telnetCmd{2, "IP", "interrupt process"},
+		bBREA: telnetCmd{2, "BREA", "break"},
+		bDM:   telnetCmd{2, "DM", "data mark"},
+		bNOP:  telnetCmd{2, "NOP", "no operation"},
+		bSE:   telnetCmd{2, "SE", "End of subnegotiation parameters"},
 	}
 )
 
-// This is the signature of telgo command functions. It receives a pointer to
+// Cmd is the signature of telgo command functions. It receives a pointer to
 // the telgo client struct and a slice of strings containing the arguments the
 // user has supplied. The first argument is always the command name itself.
 // If this function returns true the client connection will be terminated.
-type TelgoCmd func(c *TelnetClient, args []string) bool
-type TelgoCmdList map[string]TelgoCmd
+type Cmd func(c *TelnetClient, args []string) bool
 
-// This struct is used to export the raw tcp connection to the client as well as
-// the UserData which got supplied to NewTelnetServer.
+// CmdList is a list of Telgo Commands using the command name as the key.
+type CmdList map[string]Cmd
+
+// TelnetClient is used to export the raw tcp connection to the client as well as
+// the UserData to Telgo command functions.
 // The Cancel channel will get ready for reading when the user hits Ctrl-C or
 // the connection got terminated. This can be used for long running telgo commands
 // to be aborted.
@@ -127,12 +129,12 @@ type TelnetClient struct {
 	scanner  *bufio.Scanner
 	writer   *bufio.Writer
 	prompt   string
-	commands *TelgoCmdList
+	commands *CmdList
 	iacout   chan []byte
 	stdout   chan []byte
 }
 
-func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userdata interface{}) (c *TelnetClient) {
+func newTelnetClient(conn net.Conn, prompt string, commands *CmdList, userdata interface{}) (c *TelnetClient) {
 	tl.Println("new client from:", conn.RemoteAddr())
 	c = &TelnetClient{}
 	c.Conn = conn
@@ -152,19 +154,19 @@ func newTelnetClient(conn net.Conn, prompt string, commands *TelgoCmdList, userd
 	return c
 }
 
-// This writes a 'raw' string to the client. For the most part the usage of Say
-// and Sayln is recommended. WriteString will take care of escaping IAC bytes
+// WriteString writes a 'raw' string to the client. For most purposes the usage of
+// Say and Sayln is recommended. WriteString will take care of escaping IAC bytes
 // inside your string.
 func (c *TelnetClient) WriteString(text string) {
-	c.stdout <- bytes.Replace([]byte(text), []byte{IAC}, []byte{IAC, IAC}, -1)
+	c.stdout <- bytes.Replace([]byte(text), []byte{bIAC}, []byte{bIAC, bIAC}, -1)
 }
 
-// This is a simple Printf like interface which sends responses to the client.
+// Say is a simple Printf like interface which sends responses to the client.
 func (c *TelnetClient) Say(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...))
 }
 
-// This is the same as Say but also adds a new-line at the end of the string.
+// Sayln is the same as Say but also adds a new-line at the end of the string.
 func (c *TelnetClient) Sayln(format string, a ...interface{}) {
 	c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
 }
@@ -286,13 +288,13 @@ func (c *TelnetClient) handleCmd(cmdstr string, done chan<- bool) {
 // parse the telnet command and send out out-of-band responses to them
 func handleIac(iac []byte, iacout chan<- []byte) {
 	switch iac[1] {
-	case WILL, WONT:
-		iac[1] = DONT // deny the client to use any proposed options
-	case DO, DONT:
-		iac[1] = WONT // refuse the usage of any requested options
-	case IP:
+	case bWILL, bWONT:
+		iac[1] = bDONT // deny the client to use any proposed options
+	case bDO, bDONT:
+		iac[1] = bWONT // refuse the usage of any requested options
+	case bIP:
 		// pass this through to client.handle which will cancel the process
-	case IAC:
+	case bIAC:
 		return // just an escaped IAC, this will be dealt with by dropIAC
 	default:
 		tl.Printf("ignoring unimplemented telnet command: %s (%s)", telnetCmds[iac[1]].name, telnetCmds[iac[1]].description)
@@ -315,7 +317,7 @@ func dropIAC(data []byte) []byte {
 	token := []byte("")
 	iiac := 0
 	for {
-		niiac := bytes.IndexByte(data[iiac:], IAC)
+		niiac := bytes.IndexByte(data[iiac:], bIAC)
 		if niiac >= 0 {
 			token = append(token, data[iiac:iiac+niiac]...)
 			iiac += niiac
@@ -329,8 +331,8 @@ func dropIAC(data []byte) []byte {
 			if (len(data) - iiac) < l { // check if the command is complete
 				return token // something is fishy.. found an IAC but the command is too short...
 			}
-			if data[iiac+1] == IAC { // escaped IAC found
-				token = append(token, IAC)
+			if data[iiac+1] == bIAC { // escaped IAC found
+				token = append(token, bIAC)
 			}
 			iiac += l
 		} else {
@@ -358,12 +360,12 @@ func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (ad
 		return 0, nil, nil
 	}
 
-	inl := bytes.IndexByte(data, '\n') // index of first newline character
-	ieot := bytes.IndexByte(data, EOT) // index of first End of Transmission
+	inl := bytes.IndexByte(data, '\n')  // index of first newline character
+	ieot := bytes.IndexByte(data, bEOT) // index of first End of Transmission
 
 	iiac := *lastiiac
 	for {
-		niiac := bytes.IndexByte(data[iiac:], IAC) // index of first/next telnet IAC
+		niiac := bytes.IndexByte(data[iiac:], bIAC) // index of first/next telnet IAC
 		if niiac >= 0 {
 			iiac += niiac
 		} else {
@@ -407,7 +409,7 @@ func (c *TelnetClient) recv(in chan<- string) {
 
 	for c.scanner.Scan() {
 		b := c.scanner.Bytes()
-		if len(b) > 0 && b[0] == EOT {
+		if len(b) > 0 && b[0] == bEOT {
 			tl.Printf("client(%s): Ctrl-D received, closing", c.Conn.RemoteAddr())
 			return
 		}
@@ -433,7 +435,7 @@ func (c *TelnetClient) send(quit <-chan bool) {
 		case <-quit:
 			return
 		case iac := <-c.iacout:
-			if iac[1] == IP {
+			if iac[1] == bIP {
 				c.cancel()
 			} else {
 				c.writer.Write(iac)
@@ -485,18 +487,21 @@ func (c *TelnetClient) handle() {
 	}
 }
 
+// TelnetServer contains all values needed to run the server. Use NewTelnetServer to create
+// and Run to actually run the server.
 type TelnetServer struct {
 	addr     string
 	prompt   string
-	commands TelgoCmdList
+	commands CmdList
 	userdata interface{}
 }
 
-// This creates a new telnet server. addr is the address to bind/listen to on and will be passed through
-// to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready for a new command.
-// TelgoCmdList is a list of available commands and userdata will be made available to called telgo
-// commands through the client struct.
-func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interface{}) (s *TelnetServer) {
+// NewTelnetServer creates a new telnet server. addr is the address to bind/listen to on and will be passed
+// through to net.Listen(). The prompt will be sent to the client whenever the telgo server is ready for a
+// new command.
+// commands is a list of commands to be used and userdata will be made available to called telgo commands
+// through the client struct.
+func NewTelnetServer(addr, prompt string, commands CmdList, userdata interface{}) (s *TelnetServer) {
 	s = &TelnetServer{}
 	s.addr = addr
 	s.prompt = prompt
@@ -505,11 +510,11 @@ func NewTelnetServer(addr, prompt string, commands TelgoCmdList, userdata interf
 	return s
 }
 
-// This runs the telnet server and spawns go routines for every connecting client.
-func (self *TelnetServer) Run() error {
-	tl.Println("listening on", self.addr)
+// Run opens the server socket and runs the telnet server which spawns go routines for every connecting client.
+func (s *TelnetServer) Run() error {
+	tl.Println("listening on", s.addr)
 
-	server, err := net.Listen("tcp", self.addr)
+	server, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		tl.Println("Listen() Error:", err)
 		return err
@@ -522,7 +527,7 @@ func (self *TelnetServer) Run() error {
 			return err
 		}
 
-		c := newTelnetClient(conn, self.prompt, &self.commands, self.userdata)
+		c := newTelnetClient(conn, s.prompt, &s.commands, s.userdata)
 		go c.handle()
 	}
 }

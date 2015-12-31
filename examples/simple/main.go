@@ -75,7 +75,7 @@ func quit(c *telgo.TelnetClient, args []string) bool {
 }
 
 func main() {
-	cmdlist := make(telgo.TelgoCmdList)
+	cmdlist := make(telgo.CmdList)
 	cmdlist["echo"] = echo
 	cmdlist["run"] = run
 	cmdlist["quit"] = quit
