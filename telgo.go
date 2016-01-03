@@ -58,7 +58,7 @@ var (
 
 func init() {
 	if _, exists := os.LookupEnv("TELGO_DEBUG"); exists {
-		tl = log.New(os.Stderr, "[telgo]\t", log.LstdFlags)
+		tl.SetOutput(os.Stderr)
 	}
 }
 
