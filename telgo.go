@@ -132,6 +132,7 @@ type Client struct {
 	commands *CmdList
 	iacout   chan []byte
 	stdout   chan []byte
+	quitSend chan bool
 }
 
 func newClient(conn net.Conn, prompt string, commands *CmdList, userdata interface{}) (c *Client) {
@@ -144,6 +145,7 @@ func newClient(conn net.Conn, prompt string, commands *CmdList, userdata interfa
 	c.commands = commands
 	c.UserData = userdata
 	c.stdout = make(chan []byte)
+	c.quitSend = make(chan bool)
 	c.Cancel = make(chan bool, 1)
 	// the telnet split function needs some closures to handle inline telnet commands
 	c.iacout = make(chan []byte)
@@ -156,19 +158,30 @@ func newClient(conn net.Conn, prompt string, commands *CmdList, userdata interfa
 
 // WriteString writes a 'raw' string to the client. For most purposes the usage of
 // Say and Sayln is recommended. WriteString will take care of escaping IAC bytes
-// inside your string.
-func (c *Client) WriteString(text string) {
+// inside your string. This function returns false if the client connection has been
+// closed and the client is about to go away.
+func (c *Client) WriteString(text string) bool {
+	select {
+	case _, ok := <-c.quitSend:
+		if !ok {
+			return false
+		}
+	default:
+	}
 	c.stdout <- bytes.Replace([]byte(text), []byte{bIAC}, []byte{bIAC, bIAC}, -1)
+	return true
 }
 
-// Say is a simple Printf-like interface which sends responses to the client.
-func (c *Client) Say(format string, a ...interface{}) {
-	c.WriteString(fmt.Sprintf(format, a...))
+// Say is a simple Printf-like interface which sends responses to the client. If it
+// returns false the client connection is about to be closed and therefore no output
+// has been sent.
+func (c *Client) Say(format string, a ...interface{}) bool {
+	return c.WriteString(fmt.Sprintf(format, a...))
 }
 
 // Sayln is the same as Say but also adds a new-line at the end of the string.
-func (c *Client) Sayln(format string, a ...interface{}) {
-	c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
+func (c *Client) Sayln(format string, a ...interface{}) bool {
+	return c.WriteString(fmt.Sprintf(format, a...) + "\r\n")
 }
 
 var (
@@ -429,11 +442,13 @@ func (c *Client) cancel() {
 	}
 }
 
-func (c *Client) send(quit <-chan bool) {
+func (c *Client) send() {
 	for {
 		select {
-		case <-quit:
-			return
+		case _, ok := <-c.quitSend:
+			if !ok {
+				return
+			}
 		case iac := <-c.iacout:
 			if iac[1] == bIP {
 				c.cancel()
@@ -454,9 +469,8 @@ func (c *Client) handle() {
 	in := make(chan string)
 	go c.recv(in)
 
-	quitSend := make(chan bool)
-	go c.send(quitSend)
-	defer func() { quitSend <- true }()
+	go c.send()
+	defer close(c.quitSend)
 
 	defer c.cancel() // make sure to cancel possible running job when closing connection
 

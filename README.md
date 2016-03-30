@@ -11,7 +11,9 @@ long running user commands.
 
 ## Status
 
-This is currently on development. Any api calls are subject to change!
+This is currently on development. The API is in a semi-stable state. This
+means i'm trying not to break anything but i'm not yet in a place where i can
+guarantee that it won't happen.
 
 ## API
 
