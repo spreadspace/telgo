@@ -118,7 +118,8 @@ type Cmd func(c *Client, args []string) bool
 type CmdList map[string]Cmd
 
 // Client is used to export the raw tcp connection to the client as well as the
-// UserData to telgo command functions.
+// UserData to telgo command functions. The Prompt variable my be used to override
+// the server prompt. Set it to the empty string to get the default prompt.
 // The Cancel channel will get ready for reading when the user hits Ctrl-C or
 // the connection got terminated. This can be used to abort long running telgo
 // commands.
@@ -129,6 +130,7 @@ type Client struct {
 	scanner  *bufio.Scanner
 	writer   *bufio.Writer
 	prompt   string
+	Prompt   string
 	commands *CmdList
 	iacout   chan []byte
 	stdout   chan []byte
@@ -142,6 +144,7 @@ func newClient(conn net.Conn, prompt string, commands *CmdList, userdata interfa
 	c.scanner = bufio.NewScanner(conn)
 	c.writer = bufio.NewWriter(conn)
 	c.prompt = prompt
+	c.Prompt = ""
 	c.commands = commands
 	c.UserData = userdata
 	c.stdout = make(chan []byte)
@@ -463,6 +466,14 @@ func (c *Client) send() {
 	}
 }
 
+func (c *Client) writePrompt() {
+	if c.Prompt == "" {
+		c.WriteString(c.prompt)
+	} else {
+		c.WriteString(c.Prompt)
+	}
+}
+
 func (c *Client) handle() {
 	defer c.Conn.Close()
 
@@ -476,7 +487,7 @@ func (c *Client) handle() {
 
 	done := make(chan bool)
 	busy := false
-	c.WriteString(c.prompt)
+	c.writePrompt()
 	for {
 		select {
 		case cmd, ok := <-in:
@@ -488,14 +499,14 @@ func (c *Client) handle() {
 					go c.handleCmd(cmd, done)
 					busy = true
 				} else {
-					c.WriteString(c.prompt)
+					c.writePrompt()
 				}
 			}
 		case exit := <-done:
 			if exit {
 				return
 			}
-			c.WriteString(c.prompt)
+			c.writePrompt()
 			busy = false
 		}
 	}
