@@ -131,13 +131,14 @@ type Client struct {
 	writer   *bufio.Writer
 	prompt   string
 	Prompt   string
+	greeter  Cmd
 	commands *CmdList
 	iacout   chan []byte
 	stdout   chan []byte
 	quitSend chan bool
 }
 
-func newClient(conn net.Conn, prompt string, commands *CmdList, userdata interface{}) (c *Client) {
+func newClient(conn net.Conn, prompt string, greeter Cmd, commands *CmdList, userdata interface{}) (c *Client) {
 	tl.Println("new client from:", conn.RemoteAddr())
 	c = &Client{}
 	c.Conn = conn
@@ -145,6 +146,7 @@ func newClient(conn net.Conn, prompt string, commands *CmdList, userdata interfa
 	c.writer = bufio.NewWriter(conn)
 	c.prompt = prompt
 	c.Prompt = ""
+	c.greeter = greeter
 	c.commands = commands
 	c.UserData = userdata
 	c.stdout = make(chan []byte)
@@ -299,6 +301,10 @@ func (c *Client) handleCmd(cmdstr string, done chan<- bool) {
 		}
 	}
 	c.Sayln("unknown command '%s'", cmdslice[0])
+}
+
+func (c *Client) runGreeter(done chan<- bool) {
+	done <- c.greeter(c, []string{"greeter"})
 }
 
 // parse the telnet command and send out out-of-band responses to them
@@ -487,7 +493,12 @@ func (c *Client) handle() {
 
 	done := make(chan bool)
 	busy := false
-	c.writePrompt()
+	if c.greeter != nil {
+		go c.runGreeter(done)
+		busy = true
+	} else {
+		c.writePrompt()
+	}
 	for {
 		select {
 		case cmd, ok := <-in:
@@ -536,7 +547,7 @@ func NewServer(addr, prompt string, commands CmdList, userdata interface{}) (s *
 }
 
 // Run opens the server socket and runs the telnet server which spawns go routines for every connecting client.
-func (s *Server) Run() error {
+func (s *Server) RunWithGreeter(greeter Cmd) error {
 	tl.Println("listening on", s.addr)
 
 	server, err := net.Listen("tcp", s.addr)
@@ -552,7 +563,12 @@ func (s *Server) Run() error {
 			return err
 		}
 
-		c := newClient(conn, s.prompt, &s.commands, s.userdata)
+		c := newClient(conn, s.prompt, greeter, &s.commands, s.userdata)
 		go c.handle()
 	}
+}
+
+// Run opens the server socket and runs the telnet server which spawns go routines for every connecting client.
+func (s *Server) Run() error {
+	return s.RunWithGreeter(nil)
 }
