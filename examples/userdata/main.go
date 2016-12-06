@@ -32,6 +32,7 @@ package main
 import (
 	"fmt"
 	"github.com/spreadspace/telgo"
+	"os"
 )
 
 func whoami(c *telgo.Client, args []string, hostname string) bool {
@@ -61,8 +62,12 @@ func main() {
 	cmdlist["whoami"] = func(c *telgo.Client, args []string) bool { return whoami(c, args, globalUserdata) }
 	cmdlist["setname"] = func(c *telgo.Client, args []string) bool { return setname(c, args, globalUserdata) }
 
-	s := telgo.NewServer(":7023", "userdata> ", cmdlist, "anonymous")
-	if err := s.Run(); err != nil {
-		fmt.Printf("telnet server returned: %s", err)
+	s, err := telgo.NewServer(":7023", "userdata> ", cmdlist, "anonymous")
+	if err != nil {
+		fmt.Println("failed to initialize telnet server:", err)
+		os.Exit(1)
+	}
+	if err = s.Run(); err != nil {
+		fmt.Println("telnet server returned:", err)
 	}
 }

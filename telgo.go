@@ -526,7 +526,7 @@ func (c *Client) handle() {
 // Server contains all values needed to run the server. Use NewServer to create
 // and Run to actually run the server.
 type Server struct {
-	addr     string
+	ln       net.Listener
 	prompt   string
 	commands CmdList
 	userdata interface{}
@@ -537,27 +537,33 @@ type Server struct {
 // for a new command.
 // commands is a list of telgo commands to be used and userdata will be made available to called telgo commands
 // through the client struct.
-func NewServer(addr, prompt string, commands CmdList, userdata interface{}) (s *Server) {
+func NewServer(addr, prompt string, commands CmdList, userdata interface{}) (s *Server, err error) {
 	s = &Server{}
-	s.addr = addr
 	s.prompt = prompt
 	s.commands = commands
 	s.userdata = userdata
-	return s
+	s.ln, err = net.Listen("tcp", addr)
+	return
 }
 
-// Run opens the server socket and runs the telnet server which spawns go routines for every connecting client.
-func (s *Server) RunWithGreeter(greeter Cmd) error {
-	tl.Println("listening on", s.addr)
+// NewServerFromListener does the same as NewServer takes a net listener except for an address.
+func NewServerFromListener(ln net.Listener, prompt string, commands CmdList, userdata interface{}) (s *Server, err error) {
+	s = &Server{}
+	s.prompt = prompt
+	s.commands = commands
+	s.userdata = userdata
+	s.ln = ln
+	return
+}
 
-	server, err := net.Listen("tcp", s.addr)
-	if err != nil {
-		tl.Println("Listen() Error:", err)
-		return err
-	}
+// RunWithGreeter opens the server socket and runs the telnet server which spawns go routines for every
+// connecting client. If greeter is not nil it will be called when a client connects and no prompt will
+// be shown.
+func (s *Server) RunWithGreeter(greeter Cmd) error {
+	tl.Println("listening on", s.ln.Addr().String())
 
 	for {
-		conn, err := server.Accept()
+		conn, err := s.ln.Accept()
 		if err != nil {
 			tl.Println("Accept() Error:", err)
 			return err

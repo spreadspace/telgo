@@ -32,6 +32,7 @@ package main
 import (
 	"fmt"
 	"github.com/spreadspace/telgo"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -80,8 +81,12 @@ func main() {
 	cmdlist["run"] = run
 	cmdlist["quit"] = quit
 
-	s := telgo.NewServer(":7023", "simple> ", cmdlist, nil)
-	if err := s.Run(); err != nil {
-		fmt.Printf("telnet server returned: %s", err)
+	s, err := telgo.NewServer(":7023", "simple> ", cmdlist, nil)
+	if err != nil {
+		fmt.Println("failed to initialize telnet server:", err)
+		os.Exit(1)
+	}
+	if err = s.Run(); err != nil {
+		fmt.Println("telnet server returned:", err)
 	}
 }
