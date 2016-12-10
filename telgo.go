@@ -117,6 +117,11 @@ type Cmd func(c *Client, args []string) bool
 // CmdList is a list of telgo commands using the command name as the key.
 type CmdList map[string]Cmd
 
+//
+type Greeter interface {
+	Exec(c *Client, args []string) bool
+}
+
 // Client is used to export the raw tcp connection to the client as well as the
 // UserData to telgo command functions. The Prompt variable my be used to override
 // the server prompt. Set it to the empty string to get the default prompt.
@@ -131,14 +136,15 @@ type Client struct {
 	writer   *bufio.Writer
 	prompt   string
 	Prompt   string
-	greeter  Cmd
+	greeter  Greeter
 	commands *CmdList
+	dfltCmd  Cmd
 	iacout   chan []byte
 	stdout   chan []byte
 	quitSend chan bool
 }
 
-func newClient(conn net.Conn, prompt string, greeter Cmd, commands *CmdList, userdata interface{}) (c *Client) {
+func newClient(conn net.Conn, prompt string, greeter Greeter, commands *CmdList, dflt Cmd, userdata interface{}) (c *Client) {
 	tl.Println("new client from:", conn.RemoteAddr())
 	c = &Client{}
 	c.Conn = conn
@@ -148,6 +154,7 @@ func newClient(conn net.Conn, prompt string, greeter Cmd, commands *CmdList, use
 	c.Prompt = ""
 	c.greeter = greeter
 	c.commands = commands
+	c.dfltCmd = dflt
 	c.UserData = userdata
 	c.stdout = make(chan []byte)
 	c.quitSend = make(chan bool)
@@ -300,11 +307,15 @@ func (c *Client) handleCmd(cmdstr string, done chan<- bool) {
 			return
 		}
 	}
+	if c.dfltCmd != nil {
+		quit = c.dfltCmd(c, cmdslice)
+		return
+	}
 	c.Sayln("unknown command '%s'", cmdslice[0])
 }
 
 func (c *Client) runGreeter(done chan<- bool) {
-	done <- c.greeter(c, []string{"greeter"})
+	done <- c.greeter.Exec(c, []string{"greeter"})
 }
 
 // parse the telnet command and send out out-of-band responses to them
@@ -556,11 +567,40 @@ func NewServerFromListener(ln net.Listener, prompt string, commands CmdList, use
 	return
 }
 
-// RunWithGreeter opens the server socket and runs the telnet server which spawns go routines for every
-// connecting client. If greeter is not nil it will be called when a client connects and no prompt will
-// be shown.
-func (s *Server) RunWithGreeter(greeter Cmd) error {
+// Run opens the server socket and runs the telnet server which spawns go routines for every
+// connecting client. This function takes 2 optional parameters.
+// Parameter who implement the Greeter interface will be passed to clients as greet function.
+// These functions will be called before the first command prompt is shown. If the greeter function
+// returns true the connection will be closed after it's completion. In this case the user won't be able
+// to send any commands but might abort the running greet command using CTRl-C.
+// If the parameter is a normal command function it will be used as a default command which will be called
+// if the user entered an unknown command.
+func (s *Server) Run(params ...interface{}) error {
 	tl.Println("listening on", s.ln.Addr().String())
+
+	var greeter Greeter
+	var dflt Cmd
+	for i, param := range params {
+		switch param.(type) {
+		case Greeter:
+			if greeter != nil {
+				panic(fmt.Sprintf("telgo.run() invalid parameter(%d): greeter may be supplied only once", i))
+			}
+			greeter = param.(Greeter)
+		case func(c *Client, args []string) bool:
+			if dflt != nil {
+				panic(fmt.Sprintf("telgo.run() invalid parameter(%d): default command may be supplied only once", i))
+			}
+			dflt = param.(func(c *Client, args []string) bool)
+		case Cmd:
+			if dflt != nil {
+				panic(fmt.Sprintf("telgo.run() invalid parameter(%d): default command may be supplied only once", i))
+			}
+			dflt = param.(Cmd)
+		default:
+			panic(fmt.Sprintf("telgo.run() invalid parameter(%d): type %T is not supported", i, param))
+		}
+	}
 
 	for {
 		conn, err := s.ln.Accept()
@@ -569,12 +609,7 @@ func (s *Server) RunWithGreeter(greeter Cmd) error {
 			return err
 		}
 
-		c := newClient(conn, s.prompt, greeter, &s.commands, s.userdata)
+		c := newClient(conn, s.prompt, greeter, &s.commands, dflt, s.userdata)
 		go c.handle()
 	}
-}
-
-// Run opens the server socket and runs the telnet server which spawns go routines for every connecting client.
-func (s *Server) Run() error {
-	return s.RunWithGreeter(nil)
 }
