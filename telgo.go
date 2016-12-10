@@ -117,7 +117,8 @@ type Cmd func(c *Client, args []string) bool
 // CmdList is a list of telgo commands using the command name as the key.
 type CmdList map[string]Cmd
 
-//
+// The Greeter interface is used to distinguish between default and greet functions
+// supplied to run()
 type Greeter interface {
 	Exec(c *Client, args []string) bool
 }
