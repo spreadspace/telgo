@@ -80,6 +80,12 @@ const (
 	bDM   = byte(242)
 	bNOP  = byte(241)
 	bSE   = byte(240)
+
+	// subnegotiations
+	// RFC-1091: Terminal-Type
+	bSBTerminalTypeCode = byte(24)
+	bSBTerminalTypeIs   = byte(0)
+	bSBTerminalTypeSend = byte(1)
 )
 
 type telnetCmd struct {
@@ -163,8 +169,9 @@ func newClient(conn net.Conn, prompt string, greeter Greeter, commands *CmdList,
 	// the telnet split function needs some closures to handle inline telnet commands
 	c.iacout = make(chan []byte)
 	lastiiac := 0
+	sbstart := -1
 	c.scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		return scanLines(data, atEOF, c.iacout, &lastiiac)
+		return scanLines(data, atEOF, c.iacout, &lastiiac, &sbstart)
 	})
 	return c
 }
@@ -389,7 +396,7 @@ func compareIdx(a, b int) int {
 	return a - b
 }
 
-func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac *int) (advance int, token []byte, err error) {
+func scanLines(data []byte, atEOF bool, iacout chan<- []byte, lastiiac, sbstart *int) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil
 	}
