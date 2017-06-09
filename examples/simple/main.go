@@ -49,12 +49,12 @@ func run(c *telgo.Client, args []string) bool {
 		return false
 	}
 	var duration uint
-	if d, err := strconv.ParseUint(args[1], 10, 32); err != nil {
+	d, err := strconv.ParseUint(args[1], 10, 32)
+	if err != nil {
 		c.Sayln("'%s' is not a vaild duration: must be a positive integer", args[1])
 		return false
-	} else {
-		duration = uint(d)
 	}
+	duration = uint(d)
 	c.Sayln("this will run for %d seconds (type Ctrl-C to abort)", duration)
 	c.Say("running ...   0.0%%\r")
 	for i := uint(0); i < duration*10; i++ {
