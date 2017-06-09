@@ -19,6 +19,7 @@ guarantee that it won't happen.
 
 [![GoDoc](https://godoc.org/github.com/spreadspace/telgo?status.svg)](https://godoc.org/github.com/spreadspace/telgo)
 [Source code.](https://github.com/spreadspace/telgo)
+[![Go Report Card](https://goreportcard.com/badge/github.com/spreadspace/telgo)](https://goreportcard.com/report/github.com/spreadspace/telgo)
 
 ## Licence
 
