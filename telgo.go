@@ -90,21 +90,21 @@ type telnetCmd struct {
 
 var (
 	telnetCmds = map[byte]telnetCmd{
-		bDONT: telnetCmd{3, "DONT", "don't use option"},
-		bDO:   telnetCmd{3, "DO", "do use option"},
-		bWONT: telnetCmd{3, "WONT", "won't use option"},
-		bWILL: telnetCmd{3, "WILL", "will use option"},
-		bSB:   telnetCmd{2, "SB", "Begin of subnegotiation parameters"},
-		bGA:   telnetCmd{2, "GA", "go ahead signal"},
-		bEL:   telnetCmd{2, "EL", "erase line"},
-		bEC:   telnetCmd{2, "EC", "erase character"},
-		bAYT:  telnetCmd{2, "AYT", "are you there"},
-		bAO:   telnetCmd{2, "AO", "abort output"},
-		bIP:   telnetCmd{2, "IP", "interrupt process"},
-		bBREA: telnetCmd{2, "BREA", "break"},
-		bDM:   telnetCmd{2, "DM", "data mark"},
-		bNOP:  telnetCmd{2, "NOP", "no operation"},
-		bSE:   telnetCmd{2, "SE", "End of subnegotiation parameters"},
+		bDONT: {3, "DONT", "don't use option"},
+		bDO:   {3, "DO", "do use option"},
+		bWONT: {3, "WONT", "won't use option"},
+		bWILL: {3, "WILL", "will use option"},
+		bSB:   {2, "SB", "Begin of subnegotiation parameters"},
+		bGA:   {2, "GA", "go ahead signal"},
+		bEL:   {2, "EL", "erase line"},
+		bEC:   {2, "EC", "erase character"},
+		bAYT:  {2, "AYT", "are you there"},
+		bAO:   {2, "AO", "abort output"},
+		bIP:   {2, "IP", "interrupt process"},
+		bBREA: {2, "BREA", "break"},
+		bDM:   {2, "DM", "data mark"},
+		bNOP:  {2, "NOP", "no operation"},
+		bSE:   {2, "SE", "End of subnegotiation parameters"},
 	}
 )
 
